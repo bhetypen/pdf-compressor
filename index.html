@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="de" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ATELIER PDF // KRAFTWERK DOKUMENTE — Digital Publishing Engine</title>
+
+  <!-- Typography: Syne, Plus Jakarta Sans & IBM Plex Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Syne:wght@500;700;800&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            display: ['Syne', 'sans-serif'],
+            sans: ['Plus Jakarta Sans', 'sans-serif'],
+            mono: ['IBM Plex Mono', 'monospace'],
+          },
+          colors: {
+            atelier: {
+              void: '#060709',
+              dark: '#0B0D12',
+              surface: '#11141B',
+              elevated: '#171B24',
+              border: '#242936',
+              hairline: 'rgba(255, 255, 255, 0.08)',
+              accent: '#E6E9EE',
+              signal: '#FF3B30',
+              amber: '#FFB800',
+              emerald: '#10B981',
+              lead: '#717888',
+            }
+          },
+          boxShadow: {
+            'brut': '4px 4px 0px 0px rgba(255,255,255,0.06)',
+            'brut-white': '4px 4px 0px 0px #FFFFFF',
+            'glow-emerald': '0 0 24px -4px rgba(16, 185, 129, 0.25)',
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- React 18 & ReactDOM CDN -->
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  
+  <!-- Babel Standalone -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js"></script>
+
+  <!-- PDF.js CDN (Stable 3.11.174) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <!-- jsPDF CDN (Stable 2.5.1) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <style>
+    /* Architectural subtle noise background overlay */
+    body {
+      background-color: #060709;
+      color: #E6E9EE;
+      background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    ::selection {
+      background: #FFFFFF;
+      color: #060709;
+    }
+    /* Subtle scanline and hairline grid styling */
+    .grid-lines {
+      background-image: linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+                        linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+    input[type=range] {
+      -webkit-appearance: none;
+      background: #1E232F;
+      border-radius: 0px;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      height: 14px;
+      width: 14px;
+      background: #FFFFFF;
+      cursor: pointer;
+      border: 1px solid #000;
+      box-shadow: 2px 2px 0px rgba(0,0,0,0.5);
+    }
+    /* Smooth custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0B0D12;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #242936;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #384054;
+    }
+  </style>
+</head>
+<body class="font-sans antialiased min-h-screen text-zinc-100 flex flex-col justify-between">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useMemo } = React;
+
+    // Direct, self-contained SVG icons (React-safe, never mutates DOM behind React's back)
+    const Icon = ({ name, className = "w-4 h-4" }) => {
+      const icons = {
+        sparkles: (
+          <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+        ),
+        'file-up': (
+          <g>
+            <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+            <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+            <path d="M12 12v6" />
+            <path d="m15 15-3-3-3 3" />
+          </g>
+        ),
+        cpu: (
+          <g>
+            <rect width="16" height="16" x="4" y="4" rx="2" />
+            <rect width="6" height="6" x="9" y="9" rx="1" />
+            <path d="M15 2v2" />
+            <path d="M15 20v2" />
+            <path d="M2 15h2" />
+            <path d="M2 9h2" />
+            <path d="M20 15h2" />
+            <path d="M20 9h2" />
+            <path d="M9 2v2" />
+            <path d="M9 20v2" />
+          </g>
+        ),
+        download: (
+          <g>
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" x2="12" y1="15" y2="3" />
+          </g>
+        ),
+        'external-link': (
+          <g>
+            <path d="M15 3h6v6" />
+            <path d="M10 14 21 3" />
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+          </g>
+        ),
+        'alert-triangle': (
+          <g>
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+            <line x1="12" x2="12" y1="9" y2="13" />
+            <line x1="12" x2="12.01" y1="17" y2="17" />
+          </g>
+        ),
+        'check-circle': (
+          <g>
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+            <polyline points="22 4 12 14.01 9 11.01" />
+          </g>
+        ),
+        info: (
+          <g>
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" x2="12" y1="16" y2="12" />
+            <line x1="12" x2="12.01" y1="8" y2="8" />
+          </g>
+        ),
+        'maximize-2': (
+          <g>
+            <polyline points="15 3 21 3 21 9" />
+            <polyline points="9 21 3 21 3 15" />
+            <line x1="21" x2="14" y1="3" y2="10" />
+            <line x1="3" x2="10" y1="21" y2="14" />
+          </g>
+        )
+      };
+
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={className}
+        >
+          {icons[name] || null}
+        </svg>
+      );
+    };
+
+    // Initialize PDF.js worker
+    if (window.pdfjsLib) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    // High precision byte formatting
+    function formatBytes(bytes, decimals = 2) {
+      if (!bytes || bytes === 0) return '0.00 B';
+      const k = 1024;
+      const dm = decimals < 0 ? 0 : decimals;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    // Preset configurations for agency requirements
+    const PRESETS = [
+      {
+        id: 'strict-5mb',
+        label: 'STRENG < 5.0 MB',
+        sub: 'Garantierter Upload-Schwellenwert',
+        targetMB: 4.85,
+        dpiScale: 1.35,
+        quality: 0.76,
+        grayscale: false,
+        desc: 'Automatic adaptive matrix: Iteratively throttles resolution & JPEG packing to guarantee < 5.00 MB compliance.'
+      },
+      {
+        id: 'archiv',
+        label: 'ARCHIV / HIGH DENSITY',
+        sub: 'Retina Print & Vector Sharpness',
+        targetMB: 8.50,
+        dpiScale: 1.80,
+        quality: 0.88,
+        grayscale: false,
+        desc: 'Optimized for high-end portfolio dossiers, architectural layouts, and client presentations.'
+      },
+      {
+        id: 'extrem',
+        label: 'EXTREM / PITCH DECK',
+        sub: 'Ultra-light Mail Dispatch (<2.5 MB)',
+        targetMB: 2.20,
+        dpiScale: 1.10,
+        quality: 0.58,
+        grayscale: false,
+        desc: 'Aggressive quantization for executive email dispatch, speed-loading mobile pitch decks.'
+      },
+      {
+        id: 'blueprint',
+        label: 'MONOCHROM / VERTRAG',
+        sub: 'Architectural Blueprint Grayscale',
+        targetMB: 3.50,
+        dpiScale: 1.40,
+        quality: 0.72,
+        grayscale: true,
+        desc: 'Desaturates all pigments into neutral black & white tones, stripping chrominance weight.'
+      }
+    ];
+
+    function App() {
+      // Document State
+      const [file, setFile] = useState(null);
+      const [fileName, setFileName] = useState('');
+      const [originalBytes, setOriginalBytes] = useState(0);
+      const [numPages, setNumPages] = useState(0);
+      const [isDragging, setIsDragging] = useState(false);
+      const [isGeneratingSample, setIsGeneratingSample] = useState(false);
+
+      // Tuning Settings
+      const [selectedPreset, setSelectedPreset] = useState('strict-5mb');
+      const [targetMB, setTargetMB] = useState(4.85);
+      const [renderScale, setRenderScale] = useState(1.35); // 72 to 200 DPI approx
+      const [jpegQuality, setJpegQuality] = useState(0.76);
+      const [grayscale, setGrayscale] = useState(false);
+
+      // Pipeline Telemetry State
+      const [isProcessing, setIsProcessing] = useState(false);
+      const [telemetryLog, setTelemetryLog] = useState('ENGINE IDLE // READY FOR ARTIFACT INPUT');
+      const [currentPageProcessing, setCurrentPageProcessing] = useState(0);
+      const [currentProgress, setCurrentProgress] = useState(0);
+      const [passNumber, setPassNumber] = useState(1);
+      const [errorMessage, setErrorMessage] = useState(null);
+
+      // Output Results
+      const [compressedBlob, setCompressedBlob] = useState(null);
+      const [compressedBlobUrl, setCompressedBlobUrl] = useState(null);
+      const [compressedBytes, setCompressedBytes] = useState(null);
+      const [pageThumbnails, setPageThumbnails] = useState([]);
+      const [activeInspectIndex, setActiveInspectIndex] = useState(0);
+      const [inspectorModalOpen, setInspectorModalOpen] = useState(false);
+
+      const fileInputRef = useRef(null);
+
+      // Cleanup object URLs
+      useEffect(() => {
+        return () => {
+          if (compressedBlobUrl) URL.revokeObjectURL(compressedBlobUrl);
+        };
+      }, [compressedBlobUrl]);
+
+      // Apply Preset Config
+      const handleSelectPreset = (preset) => {
+        setSelectedPreset(preset.id);
+        setTargetMB(preset.targetMB);
+        setRenderScale(preset.dpiScale);
+        setJpegQuality(preset.quality);
+        setGrayscale(preset.grayscale);
+      };
+
+      // File Drag & Drop
+      const handleDragOver = (e) => {
+        e.preventDefault();
+        setIsDragging(true);
+      };
+      const handleDragLeave = () => setIsDragging(false);
+      const handleDrop = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        const f = e.dataTransfer.files?.[0];
+        if (f) ingestFile(f);
+      };
+      const handleFileInput = (e) => {
+        const f = e.target.files?.[0];
+        if (f) ingestFile(f);
+      };
+
+      // Ingest PDF & Inspect Pages
+      const ingestFile = async (rawFile) => {
+        if (rawFile.type !== 'application/pdf' && !rawFile.name.toLowerCase().endsWith('.pdf')) {
+          setErrorMessage('INVALID ARTIFACT FORMAT. ONLY STANDARD ADOBE .PDF IS PERMITTED.');
+          return;
+        }
+
+        setErrorMessage(null);
+        setCompressedBlob(null);
+        setCompressedBytes(null);
+        setPageThumbnails([]);
+        setCurrentProgress(0);
+        setTelemetryLog('ANALYZING STRUCTURE // PDF DOM DECODE INITIALIZED');
+
+        setFile(rawFile);
+        setFileName(rawFile.name);
+        setOriginalBytes(rawFile.size);
+
+        try {
+          const buffer = await rawFile.arrayBuffer();
+          const loadingTask = window.pdfjsLib.getDocument({ data: buffer });
+          const pdfDoc = await loadingTask.promise;
+          setNumPages(pdfDoc.numPages);
+          setTelemetryLog(`ARTIFACT INGESTED // ${pdfDoc.numPages} PAGES VERIFIED // READY FOR COMPRESSION MATRIX`);
+        } catch (err) {
+          console.error(err);
+          if (err.name === 'PasswordException') {
+            setErrorMessage('SECURITY PROTOCOL: PDF IS ENCRYPTED / PASSWORD PROTECTED. UNLOCK FIRST.');
+          } else {
+            setErrorMessage('CORRUPT ARTIFACT HEADER: UNABLE TO RENDER VIA WEBASSEMBLY ENGINE.');
+          }
+          setFile(null);
+        }
+      };
+
+      // Generate Luxury European Studio Sample Dossier PDF for instant testing
+      const generateSampleDossier = async () => {
+        setIsGeneratingSample(true);
+        setTelemetryLog('GENERATING SYNTHETIC STUDIO PORTFOLIO ARTIFACT (7 PAGES)...');
+
+        try {
+          const { jsPDF } = window.jspdf;
+          const doc = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4',
+            compress: false
+          });
+
+          const pagesContent = [
+            {
+              title: "KRAFTWERK // DOSSIER 2026",
+              subtitle: "PORTFOLIO DER MODERNEN ARCHITEKTUR & BRAND SYSTEMS",
+              section: "01 / MANIFESTO",
+              quote: "Form follows precision. Eliminating digital clutter without degrading visual fidelity."
+            },
+            {
+              title: "MONOLITHIC IDENTITY",
+              subtitle: "BRUTALIST EDITORIAL DESIGN CASE STUDY",
+              section: "02 / CASE STUDY A",
+              quote: "A balance of stark typography and functional white-space created for contemporary European institutions."
+            },
+            {
+              title: "TYPOGRAPHIC MATRICES",
+              subtitle: "SWISS STYLE RHYTHM & METRIC PROPORTIONS",
+              section: "03 / SPECIFICATIONS",
+              quote: "Strict 12-column dynamic grid, modular proportions, and contrast curves."
+            },
+            {
+              title: "ARCHITECTURAL CONCRETE",
+              subtitle: "PHOTOGRAMMETRIC RENDERING & SPATIAL DOSSIER",
+              section: "04 / SPATIAL DYNAMICS",
+              quote: "Material honesty in structural brutalism: Raw exposed shale and steel tensile anchors."
+            },
+            {
+              title: "CLIENT DELIVERABLES & CODES",
+              subtitle: "RESTRICTED AUDIT DOCUMENTATION // CONFIDENTIAL",
+              section: "05 / AUDIT LOG",
+              quote: "Strict non-disclosure material. Verified for client board meeting dispatch."
+            },
+            {
+              title: "FINANCIAL PROJECTIONS 2026-2030",
+              subtitle: "CAPITAL ALLOCATION IN CREATIVE COMPUTATION",
+              section: "06 / FISCAL SUMMARY",
+              quote: "Projected 34% operational reduction through automated client-side processing engines."
+            },
+            {
+              title: "VERIFIKATIONS-ZERTIFIKAT",
+              subtitle: "QUALITÄTSKONTROLLE // STUDIO GRADE SEAL",
+              section: "07 / SIGN-OFF",
+              quote: "APPROVED FOR PHYSICAL SILKSCREEN PRODUCTION AND HIGH-VOLUME DIGITAL ARCHIVAL."
+            }
+          ];
+
+          pagesContent.forEach((p, idx) => {
+            if (idx > 0) doc.addPage('a4', 'portrait');
+
+            // Editorial dark border frame
+            doc.setDrawColor(20, 24, 34);
+            doc.setLineWidth(1.5);
+            doc.rect(12, 12, 186, 273);
+
+            // Subtle inner hairline
+            doc.setDrawColor(180, 180, 185);
+            doc.setLineWidth(0.2);
+            doc.rect(16, 16, 178, 265);
+
+            // Top technical metadata
+            doc.setFont('courier', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(80, 85, 95);
+            doc.text("KRAFTWERK DOKUMENTE // STUDIO BERLIN-ZÜRICH", 20, 24);
+            doc.text(`ARCHIVE ID: KW-2026-00${idx + 1}B`, 135, 24);
+
+            // Horizontal line
+            doc.setDrawColor(40, 45, 55);
+            doc.setLineWidth(0.5);
+            doc.line(20, 27, 190, 27);
+
+            // Section Tag
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.setTextColor(20, 24, 30);
+            doc.text(p.section, 20, 40);
+
+            // Large Editorial Headline
+            doc.setFontSize(22);
+            doc.setTextColor(10, 12, 16);
+            doc.text(p.title, 20, 52);
+
+            // Subtitle
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.setTextColor(90, 95, 105);
+            doc.text(p.subtitle, 20, 60);
+
+            // Simulated Complex Visual Asset (Dense graphic block to simulate heavy megabytes)
+            doc.setFillColor(28, 32, 42);
+            doc.rect(20, 70, 170, 90, 'F');
+
+            // Draw technical wireframe matrix inside the asset
+            doc.setDrawColor(65, 75, 95);
+            doc.setLineWidth(0.3);
+            for (let step = 0; step < 170; step += 10) {
+              doc.line(20 + step, 70, 20 + step, 160);
+            }
+            for (let yStep = 0; yStep < 90; yStep += 10) {
+              doc.line(20, 70 + yStep, 190, 70 + yStep);
+            }
+
+            // Diagonal tension lines to create graphic density
+            doc.setDrawColor(220, 225, 235);
+            doc.line(20, 70, 190, 160);
+            doc.line(20, 160, 190, 70);
+
+            // Center watermark
+            doc.setFont('courier', 'bold');
+            doc.setFontSize(12);
+            doc.setTextColor(240, 245, 255);
+            doc.text(`[ HIGH-RESOLUTION DIGITAL ASSET BLOCK // SAMPLE REF #0${idx + 1} ]`, 28, 118);
+
+            // Editorial Body Typography
+            doc.setFont('times', 'italic');
+            doc.setFontSize(12);
+            doc.setTextColor(40, 45, 55);
+            const quoteLines = doc.splitTextToSize(`"${p.quote}"`, 165);
+            doc.text(quoteLines, 20, 176);
+
+            // Fill Paragraphs with Swiss Graphic design copy
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9.5);
+            doc.setTextColor(60, 65, 75);
+            const bodyCopy = "Precision in document engineering is not merely an aesthetic choice; it is an ergonomic mandate. When distributing confidential dossiers, pitches, or comprehensive design systems across global agency networks, strict file constraints enforce clarity. Unnecessary payload bloat is eliminated while preserving structural layout integrity.";
+            const splitBody = doc.splitTextToSize(bodyCopy, 168);
+            doc.text(splitBody, 20, 195);
+
+            // Footnote & Page numbering
+            doc.setFont('courier', 'normal');
+            doc.setFontSize(8);
+            doc.setTextColor(100, 105, 115);
+            doc.text("ENGINEERED IN BROWSER // WEBASSEMBLY COMPILED", 20, 275);
+            doc.text(`SEITE ${idx + 1} VON ${pagesContent.length}`, 162, 275);
+          });
+
+          const blob = doc.output('blob');
+          const sampleFile = new File([blob], "KRAFTWERK_STUDIO_DOSSIER_2026.pdf", { type: "application/pdf" });
+          await ingestFile(sampleFile);
+        } catch (err) {
+          console.error(err);
+          setErrorMessage('FAILED TO INITIALIZE TEST DOSSIER: ' + err.message);
+        } finally {
+          setIsGeneratingSample(false);
+        }
+      };
+
+      // Full Adaptive Compression Engine
+      const runStudioCompression = async () => {
+        if (!file) return;
+
+        setIsProcessing(true);
+        setErrorMessage(null);
+        setPassNumber(1);
+        setCurrentProgress(0);
+
+        try {
+          const targetBytes = targetMB * 1024 * 1024;
+          const buffer = await file.arrayBuffer();
+          const pdfDoc = await window.pdfjsLib.getDocument({ data: buffer }).promise;
+          const totalPages = pdfDoc.numPages;
+
+          // Adaptive parameters initial setup
+          let activeScale = renderScale;
+          let activeQuality = jpegQuality;
+          let attempt = 1;
+          const maxAttempts = 3;
+
+          let bestBlob = null;
+          let generatedPreviews = [];
+
+          while (attempt <= maxAttempts) {
+            setPassNumber(attempt);
+            setTelemetryLog(`PASS 0${attempt} INITIALIZED // SCALE: ${activeScale.toFixed(2)}x // JPEG: ${Math.round(activeQuality * 100)}% // GRAYSCALE: ${grayscale ? 'ON' : 'OFF'}`);
+
+            const { jsPDF } = window.jspdf;
+            let targetPdfDoc = null;
+            const collectedThumbs = [];
+
+            for (let i = 1; i <= totalPages; i++) {
+              setCurrentPageProcessing(i);
+              setTelemetryLog(`[PASS ${attempt}] RENDERING MATRIX // PAGE ${i} OF ${totalPages} // RESAMPLING`);
+              setCurrentProgress(Math.round(((i - 0.7) / totalPages) * 100));
+
+              const page = await pdfDoc.getPage(i);
+              const viewport = page.getViewport({ scale: activeScale });
+
+              // Render onto virtual Canvas
+              const canvas = document.createElement('canvas');
+              const ctx = canvas.getContext('2d', { alpha: false });
+              canvas.width = viewport.width;
+              canvas.height = viewport.height;
+
+              // Fill with crisp background
+              ctx.fillStyle = '#FFFFFF';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+              await page.render({
+                canvasContext: ctx,
+                viewport: viewport
+              }).promise;
+
+              // Apply Architectural Grayscale filter if enabled
+              if (grayscale) {
+                const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imgData.data;
+                for (let px = 0; px < data.length; px += 4) {
+                  // Standard luminance formula (Rec. 601)
+                  const lum = 0.299 * data[px] + 0.587 * data[px + 1] + 0.114 * data[px + 2];
+                  data[px] = lum;
+                  data[px + 1] = lum;
+                  data[px + 2] = lum;
+                }
+                ctx.putImageData(imgData, 0, 0);
+              }
+
+              // Extract point coordinates for original page dimensions
+              const originalViewport = page.getViewport({ scale: 1.0 });
+              const isLandscape = originalViewport.width > originalViewport.height;
+              const orientation = isLandscape ? 'l' : 'p';
+
+              // Convert canvas into compressed JPEG
+              const imgDataUrl = canvas.toDataURL('image/jpeg', activeQuality);
+
+              if (i === 1) {
+                targetPdfDoc = new jsPDF({
+                  orientation: orientation,
+                  unit: 'pt',
+                  format: [originalViewport.width, originalViewport.height],
+                  compress: true
+                });
+              } else {
+                targetPdfDoc.addPage([originalViewport.width, originalViewport.height], orientation);
+              }
+
+              targetPdfDoc.addImage(
+                imgDataUrl,
+                'JPEG',
+                0,
+                0,
+                originalViewport.width,
+                originalViewport.height,
+                undefined,
+                'FAST'
+              );
+
+              // Capture preview thumbnail for inspection
+              if (attempt === 1 || attempt === maxAttempts || !collectedThumbs.some(t => t.page === i)) {
+                collectedThumbs.push({
+                  page: i,
+                  thumbUrl: imgDataUrl,
+                  width: originalViewport.width,
+                  height: originalViewport.height
+                });
+              }
+
+              setCurrentProgress(Math.round((i / totalPages) * 100));
+            }
+
+            const outputBlob = targetPdfDoc.output('blob');
+            bestBlob = outputBlob;
+            generatedPreviews = collectedThumbs;
+
+            setTelemetryLog(`PASS 0${attempt} COMPLETE // MEASURED SIZE: ${formatBytes(outputBlob.size)} (TARGET: < ${targetMB.toFixed(2)} MB)`);
+
+            // Evaluation: Target satisfied or reached hard attempt cap
+            if (outputBlob.size <= targetBytes) {
+              setTelemetryLog(`TARGET OBJECTIVE SATISFIED // ${formatBytes(outputBlob.size)} IS UNDER ${targetMB.toFixed(2)} MB LIMIT`);
+              break;
+            } else if (attempt === maxAttempts) {
+              setTelemetryLog(`MAX PASSES ACHIEVED // BEST COMPRESSION RATIO REACHED`);
+              break;
+            }
+
+            // Adaptive calculation for next pass
+            const ratio = targetBytes / outputBlob.size;
+            // Downscale both resolution & JPEG quantization safely
+            activeQuality = Math.max(0.32, activeQuality * Math.pow(ratio, 0.5));
+            activeScale = Math.max(0.85, activeScale * Math.pow(ratio, 0.4));
+            attempt++;
+          }
+
+          setCompressedBlob(bestBlob);
+          setCompressedBytes(bestBlob.size);
+          const url = URL.createObjectURL(bestBlob);
+          setCompressedBlobUrl(url);
+          setPageThumbnails(generatedPreviews);
+          setCurrentProgress(100);
+          setTelemetryLog(`PIPELINE SUCCESS // OUTPUT PACKED // READY FOR DISPATCH`);
+        } catch (err) {
+          console.error(err);
+          setErrorMessage('PIPELINE FAULT: ' + (err.message || 'UNEXPECTED BUFFER CORRUPTION'));
+          setTelemetryLog('SYSTEM ABORTED DUE TO ENCOUNTERED EXCEPTION');
+        } finally {
+          setIsProcessing(false);
+        }
+      };
+
+      // Download helper
+      const handleDownload = () => {
+        if (!compressedBlob) return;
+        const cleanName = (fileName || 'DOKUMENT').replace(/\.pdf$/i, '');
+        const outName = `${cleanName}_OPTIMIZED_UNDER_5MB.pdf`;
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = compressedBlobUrl;
+        a.download = outName;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          if (a.parentNode) {
+            a.parentNode.removeChild(a);
+          }
+        }, 100);
+      };
+
+      // Direct In-Browser Fullscreen Preview
+      const handleOpenInTab = () => {
+        if (!compressedBlobUrl) return;
+        window.open(compressedBlobUrl, '_blank');
+      };
+
+      const percentReduced = useMemo(() => {
+        if (!originalBytes || !compressedBytes) return null;
+        const diff = originalBytes - compressedBytes;
+        const pct = (diff / originalBytes) * 100;
+        return pct.toFixed(1);
+      }, [originalBytes, compressedBytes]);
+
+      const isCompliant = compressedBytes && compressedBytes <= (targetMB * 1024 * 1024);
+
+      return (
+        <div className="min-h-screen flex flex-col justify-between selection:bg-white selection:text-black">
+          
+          {/* Top Swiss Agency Editorial Bar */}
+          <header className="border-b border-atelier-hairline bg-atelier-dark/80 backdrop-blur-md sticky top-0 z-40">
+            <div className="max-w-7xl mx-auto px-4 sm:px-8 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 border border-white/20 bg-atelier-surface flex items-center justify-center font-display font-black text-lg tracking-tighter text-white shadow-brut">
+                  KW
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-display font-bold text-sm tracking-wider text-white">ATELIER // KRAFTWERK DOKUMENTE</span>
+                    <span className="text-[10px] font-mono uppercase px-2 py-0.5 bg-zinc-800 text-zinc-300 border border-zinc-700">STUDIO V4.2</span>
+                  </div>
+                  <p className="text-[11px] font-mono text-zinc-400">DIGITAL PUBLISHING ENGINE // HIGH-DENSITY ARTIFACT OPTIMIZER</p>
+                </div>
+              </div>
+
+              {/* Status Header Pill */}
+              <div className="flex items-center gap-3 text-xs font-mono">
+                <div className="flex items-center gap-2 px-3 py-1.5 border border-zinc-800 bg-atelier-void/60 text-zinc-300">
+                  <span className={`w-2 h-2 rounded-full ${isProcessing ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`}></span>
+                  <span>{isProcessing ? 'MATRIX COMPUTING' : 'SANDBOX ISOLATED // CLIENT ENGINE'}</span>
+                </div>
+                <button
+                  onClick={generateSampleDossier}
+                  disabled={isProcessing || isGeneratingSample}
+                  className="px-3 py-1.5 border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 transition-all font-mono text-xs flex items-center gap-1.5 disabled:opacity-50"
+                  title="Generate a multi-page sample architectural portfolio to test immediately"
+                >
+                  <Icon name="sparkles" className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>{isGeneratingSample ? 'RENDERING...' : 'LADE TEST-DOSSIER'}</span>
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* Main Workspace */}
+          <main className="max-w-7xl mx-auto px-4 sm:px-8 py-8 w-full flex-grow space-y-8">
+            
+            {/* Editorial Manifesto Banner */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-end border-b border-zinc-800/80 pb-8">
+              <div className="lg:col-span-8 space-y-3">
+                <div className="inline-flex items-center gap-2 text-xs font-mono text-zinc-400 uppercase tracking-widest">
+                  <span>SPEICHERPLATZ-GARANTIE</span>
+                  <span>//</span>
+                  <span className="text-zinc-200">STANDORT WIEN • ZÜRICH • BERLIN</span>
+                </div>
+                <h1 className="font-display font-extrabold text-3xl sm:text-5xl tracking-tight text-white leading-none">
+                  PRECISION ARTIFACT COMPRESSION.
+                </h1>
+                <p className="font-sans text-sm sm:text-base text-zinc-400 max-w-2xl font-normal leading-relaxed">
+                  Engineered specifically for heavy agency portfolios, executive pitch decks, tender dossiers, and spatial presentations. 
+                  Zero server telemetry. All transformations execute inside the WebAssembly pipeline directly in your RAM.
+                </p>
+              </div>
+
+              <div className="lg:col-span-4 flex flex-col items-start lg:items-end justify-end font-mono text-xs text-zinc-400 space-y-1">
+                <div className="text-zinc-200 font-bold tracking-wider">HARD LIMIT SPECIFICATION</div>
+                <div className="text-xl sm:text-2xl font-mono text-white tracking-tight">&lt; 5.00 MB GUARANTEE</div>
+                <div className="text-[11px] text-zinc-400">EMAIL, NOTION, PORTAL & TENDER READY</div>
+              </div>
+            </div>
+
+            {/* Error Message Box */}
+            {errorMessage && (
+              <div className="p-4 border-l-4 border-atelier-signal bg-atelier-signal/10 text-white font-mono text-xs flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <Icon name="alert-triangle" className="w-4 h-4 text-atelier-signal flex-shrink-0" />
+                  <span>{errorMessage}</span>
+                </div>
+                <button
+                  onClick={() => setErrorMessage(null)}
+                  className="text-zinc-400 hover:text-white underline text-[11px]"
+                >
+                  DISMISS
+                </button>
+              </div>
+            )}
+
+            {/* Upload Matrix Area */}
+            <section
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current && fileInputRef.current.click()}
+              className={`relative border border-dashed transition-all duration-300 p-8 sm:p-12 cursor-pointer ${
+                isDragging
+                  ? 'border-white bg-zinc-900/90 scale-[1.002]'
+                  : 'border-zinc-800 hover:border-zinc-600 bg-atelier-dark/40 hover:bg-atelier-dark/80'
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                className="hidden"
+                onChange={handleFileInput}
+              />
+
+              <div className="flex flex-col items-center text-center space-y-4">
+                <div className="w-16 h-16 border border-zinc-700 bg-atelier-surface flex items-center justify-center text-zinc-300 shadow-brut group-hover:scale-105 transition-transform">
+                  <Icon name="file-up" className="w-7 h-7 text-white" />
+                </div>
+
+                <div className="space-y-1">
+                  <h3 className="font-display font-bold text-lg text-white tracking-wide">
+                    {file ? fileName : 'DATEI ABLEGEN ODER DURCHSUCHEN'}
+                  </h3>
+                  <p className="font-mono text-xs text-zinc-400">
+                    {file
+                      ? `DETEKTIERT: ${formatBytes(originalBytes)} (${originalBytes.toLocaleString()} BYTES) • ${numPages} SEITEN`
+                      : 'ZIEHEN SIE IHR DOKUMENT HIERHER [PDF MULTI-PAGE FORMAT]'}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fileInputRef.current?.click();
+                    }}
+                    className="px-4 py-2 bg-white text-black font-mono text-xs font-bold uppercase tracking-wider hover:bg-zinc-200 transition-colors shadow-brut"
+                  >
+                    {file ? 'DATEI ERSETZEN' : 'DATEI AUSWÄHLEN'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      generateSampleDossier();
+                    }}
+                    className="px-4 py-2 border border-zinc-700 bg-atelier-surface text-zinc-300 font-mono text-xs hover:border-zinc-500 hover:text-white transition-colors"
+                  >
+                    MUSTER-PORTFOLIO GENERIEREN
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            {/* Studio Compression Controls & Preset Matrix */}
+            <section className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              
+              {/* Left Column: Preset Configurations */}
+              <div className="lg:col-span-7 space-y-6">
+                <div>
+                  <h2 className="font-display font-bold text-lg text-white tracking-tight flex items-center gap-2">
+                    <span>STRATEGISCHE PROFIL-AUSWAHL</span>
+                    <span className="text-[10px] font-mono text-zinc-400">// COMPRESSION MODES</span>
+                  </h2>
+                  <p className="font-mono text-xs text-zinc-400 mt-1">Select an agency target preset or fine-tune parameters below.</p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {PRESETS.map((p) => {
+                    const isSelected = selectedPreset === p.id;
+                    return (
+                      <div
+                        key={p.id}
+                        onClick={() => handleSelectPreset(p)}
+                        className={`p-4 border transition-all cursor-pointer relative ${
+                          isSelected
+                            ? 'border-white bg-zinc-900/90 shadow-brut'
+                            : 'border-zinc-800 bg-atelier-dark/50 hover:border-zinc-700 hover:bg-atelier-surface'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <span className={`font-mono font-bold text-xs ${isSelected ? 'text-white' : 'text-zinc-300'}`}>
+                            {p.label}
+                          </span>
+                          {isSelected && (
+                            <span className="w-2 h-2 bg-white"></span>
+                          )}
+                        </div>
+                        <p className="font-mono text-[11px] text-zinc-400 mt-0.5">{p.sub}</p>
+                        <p className="font-sans text-xs text-zinc-400 mt-3 line-clamp-2 leading-relaxed">{p.desc}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Fine Adjustment Sliders */}
+                <div className="border border-zinc-800 bg-atelier-dark/40 p-5 space-y-4 font-mono text-xs">
+                  <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
+                    <span className="text-zinc-300 font-bold">MANUELLE FEINJUSTIERUNG</span>
+                    <span className="text-[10px] text-zinc-400">ENGINEERING OVERRIDE</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    {/* Max MB Cap */}
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-zinc-400">
+                        <span>ZIEL-GRENZE (MAX MB)</span>
+                        <span className="text-white font-bold">{targetMB.toFixed(2)} MB</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="12.0"
+                        step="0.25"
+                        value={targetMB}
+                        disabled={isProcessing}
+                        onChange={(e) => {
+                          setTargetMB(parseFloat(e.target.value));
+                          setSelectedPreset('custom');
+                        }}
+                        className="w-full h-1.5"
+                      />
+                    </div>
+
+                    {/* Rendering Sharpness DPI */}
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-zinc-400">
+                        <span>AUFLÖSUNG / SCALE</span>
+                        <span className="text-white font-bold">{(renderScale * 72).toFixed(0)} DPI ({renderScale.toFixed(2)}x)</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.8"
+                        max="2.0"
+                        step="0.05"
+                        value={renderScale}
+                        disabled={isProcessing}
+                        onChange={(e) => {
+                          setRenderScale(parseFloat(e.target.value));
+                          setSelectedPreset('custom');
+                        }}
+                        className="w-full h-1.5"
+                      />
+                    </div>
+
+                    {/* JPEG Factor */}
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-zinc-400">
+                        <span>JPEG QUALITÄTSFAKTOR</span>
+                        <span className="text-white font-bold">{Math.round(jpegQuality * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.30"
+                        max="0.95"
+                        step="0.05"
+                        value={jpegQuality}
+                        disabled={isProcessing}
+                        onChange={(e) => {
+                          setJpegQuality(parseFloat(e.target.value));
+                          setSelectedPreset('custom');
+                        }}
+                        className="w-full h-1.5"
+                      />
+                    </div>
+
+                    {/* Grayscale Toggle */}
+                    <div className="flex items-center justify-between pt-3">
+                      <div>
+                        <div className="text-zinc-200 font-bold">MONOCHROM FILTER</div>
+                        <div className="text-[10px] text-zinc-400">Desaturate for contracts & blueprints</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGrayscale(!grayscale);
+                          setSelectedPreset('custom');
+                        }}
+                        className={`px-3 py-1 text-xs font-mono font-bold border transition-colors ${
+                          grayscale ? 'bg-white text-black border-white' : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                        }`}
+                      >
+                        {grayscale ? 'AKTIV' : 'INAKTIV'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Primary Action Button */}
+                <button
+                  onClick={runStudioCompression}
+                  disabled={!file || isProcessing}
+                  className={`w-full py-4 px-6 text-sm font-mono font-bold tracking-widest uppercase transition-all flex items-center justify-center gap-3 shadow-brut ${
+                    !file
+                      ? 'bg-zinc-800 text-zinc-400 border border-zinc-700 cursor-not-allowed'
+                      : isProcessing
+                      ? 'bg-zinc-900 border border-zinc-700 text-zinc-300'
+                      : 'bg-white text-black hover:bg-zinc-200 border border-white'
+                  }`}
+                >
+                  {isProcessing ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
+                      <span>OPTIMIERE DATEI (SEITE {currentPageProcessing}/{numPages})...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Icon name="cpu" className="w-4 h-4 text-black" />
+                      <span>{compressedBlob ? 'RE-OPTIMIERUNG STARTEN' : `KOMPRIMIEREN AUF < ${targetMB.toFixed(2)} MB`}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Right Column: Telemetry & Results Dashboard */}
+              <div className="lg:col-span-5 space-y-6 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+                    <h2 className="font-display font-bold text-lg text-white tracking-tight flex items-center gap-2">
+                      <span>TELEMETRIE & AUDIT</span>
+                    </h2>
+                    <span className="font-mono text-[10px] text-zinc-400">REAL-TIME STREAM</span>
+                  </div>
+
+                  {/* Terminal Log Output */}
+                  <div className="mt-4 p-4 border border-zinc-800 bg-atelier-void font-mono text-[11px] text-zinc-300 space-y-2 min-h-[140px] flex flex-col justify-between">
+                    <div className="space-y-1">
+                      <div className="text-zinc-400 flex items-center gap-2">
+                        <span className="inline-block w-1.5 h-1.5 bg-emerald-500"></span>
+                        <span>[CORE-ENGINE V.4.2 WEBASSEMBLY]</span>
+                      </div>
+                      <div className="text-zinc-300 break-words leading-relaxed">
+                        &gt; {telemetryLog}
+                      </div>
+                    </div>
+
+                    {isProcessing && (
+                      <div className="space-y-1.5 pt-2 border-t border-zinc-800">
+                        <div className="flex justify-between text-[10px] text-zinc-400">
+                          <span>PIPELINE PROGRESS: PASS 0{passNumber}</span>
+                          <span>{currentProgress}%</span>
+                        </div>
+                        <div className="w-full h-1 bg-zinc-800 overflow-hidden">
+                          <div
+                            className="h-full bg-white transition-all duration-150"
+                            style={{ width: `${currentProgress}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Quantitative Comparison Matrix */}
+                  <div className="grid grid-cols-2 gap-3 mt-4 font-mono text-xs">
+                    <div className="border border-zinc-800 bg-atelier-dark/60 p-3.5 space-y-1">
+                      <span className="text-[10px] text-zinc-400 uppercase">URSPRÜNGLICHE GRÖSSE</span>
+                      <div className="text-base font-bold text-white tracking-tight">
+                        {file ? formatBytes(originalBytes) : '—'}
+                      </div>
+                      <span className="text-[10px] text-zinc-400 block">
+                        {file ? `${(originalBytes / (1024 * 1024)).toFixed(3)} MB` : 'KEINE DATEI'}
+                      </span>
+                    </div>
+
+                    <div className="border border-zinc-800 bg-atelier-dark/60 p-3.5 space-y-1">
+                      <span className="text-[10px] text-zinc-400 uppercase">OPTIMIERTES RESULTAT</span>
+                      <div className={`text-base font-bold tracking-tight ${compressedBytes ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                        {compressedBytes ? formatBytes(compressedBytes) : '—'}
+                      </div>
+                      <span className="text-[10px] text-zinc-400 block">
+                        {compressedBytes ? `${(compressedBytes / (1024 * 1024)).toFixed(3)} MB` : 'BEREIT'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Status Indicator Pill */}
+                  {compressedBytes && (
+                    <div className={`mt-4 p-4 border font-mono text-xs flex items-center justify-between gap-3 ${
+                      isCompliant
+                        ? 'border-emerald-500/40 bg-emerald-950/20 text-emerald-300'
+                        : 'border-amber-500/40 bg-amber-950/20 text-amber-300'
+                    }`}>
+                      <div className="flex items-center gap-2.5">
+                        <Icon name={isCompliant ? "check-circle" : "info"} className="w-4 h-4 flex-shrink-0" />
+                        <div>
+                          <div className="font-bold">
+                            {isCompliant
+                              ? `STRICT COMPLIANCE: < ${targetMB.toFixed(2)} MB TARGET ERREICHT`
+                              : `MINIMUM COMPRESSION LIMIT REACHED`}
+                          </div>
+                          <div className="text-[10px] opacity-80">
+                            VOLUMEN-REDUKTION UM -{percentReduced}% ({formatBytes(originalBytes - compressedBytes)} GESPART)
+                          </div>
+                        </div>
+                      </div>
+                      <span className="font-bold text-sm">-{percentReduced}%</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Final Action Downloads */}
+                {compressedBlob && (
+                  <div className="space-y-2 pt-4 border-t border-zinc-800">
+                    <button
+                      onClick={handleDownload}
+                      className="w-full py-3.5 px-4 bg-emerald-400 hover:bg-emerald-300 text-black font-mono font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-brut transition-colors"
+                    >
+                      <Icon name="download" className="w-4 h-4 text-black" />
+                      <span>DOKUMENT HERUNTERLADEN ({formatBytes(compressedBytes)})</span>
+                    </button>
+
+                    <button
+                      onClick={handleOpenInTab}
+                      className="w-full py-2.5 px-4 border border-zinc-700 bg-atelier-surface hover:bg-zinc-800 text-zinc-200 font-mono text-xs flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <Icon name="external-link" className="w-3.5 h-3.5 text-zinc-400" />
+                      <span>IN VOLLBILD-TAB BETRACHTEN</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* Visual Inspection Grid (Thumbnails) */}
+            {pageThumbnails.length > 0 && (
+              <section className="border border-zinc-800 bg-atelier-dark/40 p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-zinc-800 gap-2">
+                  <div>
+                    <h3 className="font-display font-bold text-base text-white tracking-tight">VISUELLE PRÜFUNG DER RENDERING-MATRIX</h3>
+                    <p className="font-mono text-xs text-zinc-400">Sample inspection sheets generated by WebAssembly pipeline</p>
+                  </div>
+                  <div className="text-xs font-mono text-zinc-400">
+                    ZEIGE {pageThumbnails.length} VON {numPages} SEITEN
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-7 gap-4">
+                  {pageThumbnails.map((item, idx) => (
+                    <div
+                      key={item.page}
+                      onClick={() => {
+                        setActiveInspectIndex(idx);
+                        setInspectorModalOpen(true);
+                      }}
+                      className="border border-zinc-800 bg-atelier-void p-2 hover:border-white transition-all cursor-pointer group flex flex-col items-center"
+                    >
+                      <div className="relative w-full aspect-[1/1.414] bg-white flex items-center justify-center overflow-hidden">
+                        <img
+                          src={item.thumbUrl}
+                          alt={`Page ${item.page}`}
+                          className="w-full h-full object-contain filter group-hover:contrast-105 transition-all"
+                        />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 flex items-center justify-center transition-colors">
+                          <Icon name="maximize-2" className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                      </div>
+                      <div className="w-full flex justify-between items-center mt-2 font-mono text-[10px] text-zinc-400">
+                        <span>SEITE {item.page.toString().padStart(2, '0')}</span>
+                        <span className="text-zinc-500">A4</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Large Modal Inspector */}
+            {inspectorModalOpen && pageThumbnails[activeInspectIndex] && (
+              <div
+                className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 sm:p-8"
+                onClick={() => setInspectorModalOpen(false)}
+              >
+                <div
+                  className="bg-atelier-dark border border-zinc-700 max-w-4xl w-full max-h-[90vh] flex flex-col p-6 space-y-4"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex justify-between items-center border-b border-zinc-800 pb-3">
+                    <div className="font-mono text-xs text-white">
+                      DETAILANSICHT: SEITE {pageThumbnails[activeInspectIndex].page} VON {numPages}
+                    </div>
+                    <button
+                      onClick={() => setInspectorModalOpen(false)}
+                      className="font-mono text-xs text-zinc-400 hover:text-white"
+                    >
+                      SCHLIESSEN [ESC]
+                    </button>
+                  </div>
+
+                  <div className="flex-grow flex items-center justify-center bg-zinc-950 p-4 overflow-auto max-h-[70vh]">
+                    <img
+                      src={pageThumbnails[activeInspectIndex].thumbUrl}
+                      alt={`Full inspect page ${pageThumbnails[activeInspectIndex].page}`}
+                      className="max-h-[65vh] object-contain shadow-2xl"
+                    />
+                  </div>
+
+                  <div className="flex justify-between items-center font-mono text-xs pt-2 text-zinc-400">
+                    <button
+                      disabled={activeInspectIndex === 0}
+                      onClick={() => setActiveInspectIndex(prev => Math.max(0, prev - 1))}
+                      className="px-3 py-1 border border-zinc-800 disabled:opacity-30 hover:border-zinc-600"
+                    >
+                      &larr; VORHERIGE SEITE
+                    </button>
+                    <span>SEITE {pageThumbnails[activeInspectIndex].page}</span>
+                    <button
+                      disabled={activeInspectIndex === pageThumbnails.length - 1}
+                      onClick={() => setActiveInspectIndex(prev => Math.min(pageThumbnails.length - 1, prev + 1))}
+                      className="px-3 py-1 border border-zinc-800 disabled:opacity-30 hover:border-zinc-600"
+                    >
+                      NÄCHSTE SEITE &rarr;
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </main>
+
+          {/* Studio Footer */}
+          <footer className="border-t border-atelier-hairline bg-atelier-void/90 py-8 text-zinc-400 font-mono text-xs">
+            <div className="max-w-7xl mx-auto px-4 sm:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <span className="w-2 h-2 bg-emerald-500"></span>
+                <span>KRAFTWERK DOKUMENTE // ATELIER PDF ENGINE</span>
+              </div>
+              <p className="text-[11px] text-zinc-400 text-center sm:text-right">
+                ZERO-SERVER TELEMETRY. ALL ARTIFACTS PROCESSED LOCALLY INSIDE BROWSER WEBASSEMBLY MEMORY.
+              </p>
+            </div>
+          </footer>
+
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
